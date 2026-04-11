@@ -1,0 +1,23 @@
+[package]
+name = "operation-logger"
+version = "0.1.0"
+edition = "2024"
+description = "A Windows input logging tool for recording keyboard, mouse, and controller operations for a selected application."
+readme = "README.md"
+repository = "https://github.com/SuzukiKatsuma/operation-logger"
+homepage = "https://github.com/SuzukiKatsuma/operation-logger"
+documentation = "https://github.com/SuzukiKatsuma/operation-logger"
+keywords = ["windows", "input", "logging"]
+publish = false
+
+[dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
