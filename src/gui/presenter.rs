@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::error::Error;
+use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 
@@ -248,7 +249,8 @@ fn start_logging(state: &mut GuiState) {
     let input = match start_input_logging(&selected, &log_dir) {
         Ok(session) => session,
         Err(error) => {
-            state.status_text = format!("Failed to start input logging: {error}");
+            state.status_text =
+                format_start_failure_status("Failed to start input logging", error, None, &log_dir);
             return;
         }
     };
@@ -256,8 +258,12 @@ fn start_logging(state: &mut GuiState) {
     let capture = match start_screen_capture(&selected, &log_dir) {
         Ok(session) => session,
         Err(error) => {
-            let _ = input.stop();
-            state.status_text = format!("Failed to start screen capture: {error}");
+            state.status_text = format_start_failure_status(
+                "Failed to start screen capture",
+                error,
+                Some(input),
+                &log_dir,
+            );
             return;
         }
     };
@@ -269,6 +275,43 @@ fn start_logging(state: &mut GuiState) {
         capture,
         log_dir,
     });
+}
+
+fn format_start_failure_status(
+    title: &str,
+    start_error: io::Error,
+    input_session: Option<InputLoggingSession>,
+    log_dir: &Path,
+) -> String {
+    match rollback_failed_start(input_session, log_dir) {
+        Some(rollback_error) => {
+            format!("{title}: {start_error} | Rollback failed: {rollback_error}")
+        }
+        None => format!("{title}: {start_error}"),
+    }
+}
+
+fn rollback_failed_start(
+    input_session: Option<InputLoggingSession>,
+    log_dir: &Path,
+) -> Option<String> {
+    let mut rollback_errors = Vec::new();
+
+    if let Some(session) = input_session {
+        if let Err(error) = session.stop() {
+            rollback_errors.push(format!("input stop error: {error}"));
+        }
+    }
+
+    if let Err(error) = fs::remove_dir_all(log_dir) {
+        rollback_errors.push(format!("log dir cleanup error: {error}"));
+    }
+
+    if rollback_errors.is_empty() {
+        None
+    } else {
+        Some(rollback_errors.join("; "))
+    }
 }
 
 fn stop_logging(state: &mut GuiState) {
