@@ -3,6 +3,7 @@ use std::io::{self, Write};
 
 use operation_logger::{
     AppWindow, create_operation_log_directory, list_running_applications, start_input_logging,
+    start_screen_capture,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -19,13 +20,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let log_dir = create_operation_log_directory(selected)?;
 
     println!("Created log directory: {}", log_dir.display());
-    let session = start_input_logging(selected, &log_dir)?;
+    let input_session = start_input_logging(selected, &log_dir)?;
+    let capture_session = start_screen_capture(selected, &log_dir)?;
 
-    println!("Input logging started. Press Enter to stop.");
+    println!("Input logging and screen capture started. Press Enter to stop.");
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
-    session.stop()?;
+    capture_session.stop()?;
+    input_session.stop()?;
 
     Ok(())
 }
