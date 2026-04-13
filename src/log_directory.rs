@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::applications::AppWindow;
 use crate::platform::local_timestamp_for_directory_name;
+use crate::session_metadata::write_session_metadata;
 
 const OPERATION_LOGS_DIR: &str = "OperationLogs";
 
@@ -43,6 +44,7 @@ fn create_operation_log_directory_in(
 ) -> io::Result<PathBuf> {
     let path = build_operation_log_directory_path(root, timestamp, app);
     fs::create_dir_all(&path)?;
+    write_session_metadata(&path, app)?;
     Ok(path)
 }
 
@@ -87,6 +89,7 @@ mod tests {
         let path = create_operation_log_directory_in(&root, "2026-04-13_012345", &app).unwrap();
 
         assert!(path.is_dir());
+        assert!(path.join("session_metadata.json").is_file());
         assert_eq!(
             path.file_name().and_then(|name| name.to_str()),
             Some("2026-04-13_012345_test-app.exe")
@@ -108,6 +111,7 @@ mod tests {
         let path = create_operation_log_directory_in(&root, "2026-04-13_012345", &app).unwrap();
 
         assert!(path.is_dir());
+        assert!(path.join("session_metadata.json").is_file());
         assert_eq!(
             path.file_name().and_then(|name| name.to_str()),
             Some("2026-04-13_012345_bad_________.exe")

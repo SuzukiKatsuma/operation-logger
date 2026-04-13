@@ -28,6 +28,7 @@ Windows 上で、選択したアプリケーションに対する入力ログと
 - 画面キャプチャは **選択したトップレベルウィンドウ** を対象に行います
 - 画面キャプチャは **動画保存** を前提とし、静止画保存は行いません
 - 画面キャプチャの時刻同期は、映像への焼き込みではなく metadata CSV により行います
+- 各ログディレクトリには、セッション単位の補助情報として `session_metadata.json` を保存します
 
 ## 出力先
 
@@ -44,6 +45,23 @@ Windows 上で、選択したアプリケーションに対する入力ログと
 `2026-04-13_012345_notepad.exe`
 
 ## 出力されるファイル
+
+### session_metadata.json
+
+セッション単位のメタデータを保存します。
+
+主な項目:
+- `operation_logger_version`
+- `is_production_build`
+- `started_at_utc`
+- `target_app.title`
+- `target_app.process_name`
+
+方針:
+- 各ログディレクトリにつき 1 回だけ保存します
+- ディレクトリ名が後で変更されても、セッション開始時刻や対象アプリケーションを追跡できるようにします
+- `operation_logger_version` は、このログを取得した Operation Logger のバージョンです
+- `is_production_build` は、現在は debug / release ビルド種別に基づく真偽値です
 
 ### keyboard_input.csv
 
@@ -154,6 +172,7 @@ cargo run
 ### 4. ログ開始
 
 対象選択後にログディレクトリが作成され、入力ロギングと画面キャプチャが始まります。
+このとき、同じディレクトリに `session_metadata.json` も保存されます。
 
 ### 5. ログ停止
 
@@ -169,6 +188,7 @@ cargo test
 
 * CSV writer
 * log directory 生成
+* session metadata 生成
 * keyboard の自動リピート抑制
 * controller の HID mapper
 * controller の state diff
@@ -188,6 +208,7 @@ OS 実環境に強く依存する部分、特に hook / Raw Input / 画面キャ
 * 画面キャプチャの詳細実装は Windows 固有 API に依存します
 * サイズ変更には対応しますが、出力動画は固定解像度で保存されます
 * 映像への時刻焼き込みは行わず、`capture_metadata.csv` により同期します
+* `session_metadata.json` の `is_production_build` は現在、debug / release ビルド種別をもとに決定しています
 
 ## 今後の予定
 
