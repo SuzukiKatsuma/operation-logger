@@ -160,14 +160,23 @@ cargo build
 ```
 
 ### 2. 実行
-
+#### GUI 版
 ```powershell
-cargo run
+cargo run --bin gui
+```
+
+#### CLI 版
+```powershell
+cargo run --bin operation-logger
 ```
 
 ### 3. 対象アプリケーションを選ぶ
+#### GUI 版
+起動中のアプリケーション一覧が GUI 上に表示されるので、一覧から対象アプリケーションを選択します。
+必要に応じて Refresh ボタンで一覧を更新できます。
 
-起動中アプリケーションの一覧が表示されるので、番号を入力して対象アプリケーションを選択します。
+#### CLI 版
+起動中のアプリケーションが一覧表示されるので、番号を入力して対象アプリケーションを選択します。
 
 ### 4. ログ開始
 
@@ -175,8 +184,11 @@ cargo run
 このとき、同じディレクトリに `session_metadata.json` も保存されます。
 
 ### 5. ログ停止
+#### GUI 版
+Stop ボタンを押すと停止します。  
 
-CLI 版では Enter を押すと停止します。
+#### CLI 版
+Enter を押すと停止します。
 
 ## テスト
 
@@ -193,6 +205,7 @@ cargo test
 * controller の HID mapper
 * controller の state diff
 * device registry
+* capture の layout / scale / timing / metadata writer
 
 OS 実環境に強く依存する部分、特に hook / Raw Input / 画面キャプチャについては、unit test よりも実機確認を重視しています。
 
@@ -212,9 +225,8 @@ OS 実環境に強く依存する部分、特に hook / Raw Input / 画面キャ
 
 ## 今後の予定
 
+* GUI 版の改善
 * controller profile の分離
-* GUI 版の追加
-* 実機確認の拡充
 
 ## 位置づけ
 
