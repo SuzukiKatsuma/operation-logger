@@ -162,12 +162,12 @@ cargo build
 ### 2. 実行
 #### GUI 版
 ```powershell
-cargo run --bin gui
+cargo run --bin operation-logger-gui
 ```
 
 #### CLI 版
 ```powershell
-cargo run --bin operation-logger
+cargo run --bin operation-logger-cli
 ```
 
 ### 3. 対象アプリケーションを選ぶ
@@ -189,6 +189,11 @@ Stop ボタンを押すと停止します。
 
 #### CLI 版
 Enter を押すと停止します。
+
+## 配布用実行ファイルの作成
+```powershell
+cargo run --bin release-package
+```
 
 ## テスト
 
