@@ -1,5 +1,6 @@
 mod applications;
 mod capture;
+pub mod gui;
 mod log_directory;
 mod logger;
 mod platform;
