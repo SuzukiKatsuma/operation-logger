@@ -20,6 +20,11 @@ const DUALSENSE_BLUETOOTH_REPORT_ID: u8 = 0x31;
 const DUALSENSE_BLUETOOTH_MIN_REPORT_LEN: usize = 12;
 const DUALSENSE_BLUETOOTH_ANALOG_OFFSET: usize = 2;
 const DUALSENSE_BLUETOOTH_BUTTON_OFFSET: usize = 9;
+const DUALSENSE_BLUETOOTH_WRAPPED_MIN_REPORT_LEN: usize = 13;
+const DUALSENSE_BLUETOOTH_WRAPPED_ANALOG_OFFSET: usize = 3;
+const DUALSENSE_BLUETOOTH_WRAPPED_BUTTON_OFFSET: usize = 10;
+const HIDP_INPUT_PREFIX: u8 = 0xA1;
+const MAX_BT_REPORT_ID_SEARCH_OFFSET: usize = 3;
 
 const DPAD_VALUE_MASK: u8 = 0x0f;
 const DPAD_NEUTRAL: u8 = 0x08;
@@ -67,6 +72,19 @@ struct ReportLayout {
 
 impl ReportLayout {
     fn from_report(report: &[u8]) -> Option<Self> {
+        if report.len() >= DUALSENSE_BLUETOOTH_WRAPPED_MIN_REPORT_LEN {
+            let prefix = report[0];
+            let report_id = report[1];
+            if (prefix == DUALSENSE_USB_REPORT_ID || prefix == HIDP_INPUT_PREFIX)
+                && report_id == DUALSENSE_BLUETOOTH_REPORT_ID
+            {
+                return Some(Self {
+                    analog_offset: DUALSENSE_BLUETOOTH_WRAPPED_ANALOG_OFFSET,
+                    button_offset: DUALSENSE_BLUETOOTH_WRAPPED_BUTTON_OFFSET,
+                });
+            }
+        }
+
         let report_id = report.first().copied()?;
 
         match report_id {
@@ -80,7 +98,21 @@ impl ReportLayout {
                     button_offset: DUALSENSE_BLUETOOTH_BUTTON_OFFSET,
                 })
             }
-            _ => None,
+            _ => {
+                // Some BT stacks prepend transport-specific bytes before 0x31.
+                // Accept a short leading header and align offsets to the located report id.
+                for report_id_index in 1..=MAX_BT_REPORT_ID_SEARCH_OFFSET {
+                    if report.get(report_id_index) == Some(&DUALSENSE_BLUETOOTH_REPORT_ID)
+                        && report.len() >= report_id_index + DUALSENSE_BLUETOOTH_MIN_REPORT_LEN
+                    {
+                        return Some(Self {
+                            analog_offset: report_id_index + DUALSENSE_BLUETOOTH_ANALOG_OFFSET,
+                            button_offset: report_id_index + DUALSENSE_BLUETOOTH_BUTTON_OFFSET,
+                        });
+                    }
+                }
+                None
+            }
         }
     }
 }
@@ -215,6 +247,116 @@ mod tests {
             snapshot
                 .analog_values
                 .contains(&("trigger_right".to_string(), 61))
+        );
+    }
+
+    #[test]
+    fn maps_dualsense_bluetooth_wrapped_with_transaction_prefix() {
+        let mut mapper = HidMapper::new();
+        let report = [
+            DUALSENSE_USB_REPORT_ID,
+            DUALSENSE_BLUETOOTH_REPORT_ID,
+            0,
+            12,
+            22,
+            32,
+            42,
+            52,
+            62,
+            0,
+            0b0011_0010,
+            0b0000_0001,
+            0,
+        ];
+
+        let snapshot = mapper.map_report(&report).unwrap();
+
+        assert!(snapshot.pressed_buttons.contains("dpad_right"));
+        assert!(snapshot.pressed_buttons.contains("button_01"));
+        assert!(snapshot.pressed_buttons.contains("button_02"));
+        assert!(snapshot.pressed_buttons.contains("button_05"));
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("axis_left_x".to_string(), 12))
+        );
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("trigger_right".to_string(), 62))
+        );
+    }
+
+    #[test]
+    fn maps_dualsense_bluetooth_wrapped_with_hidp_input_prefix() {
+        let mut mapper = HidMapper::new();
+        let report = [
+            HIDP_INPUT_PREFIX,
+            DUALSENSE_BLUETOOTH_REPORT_ID,
+            0,
+            13,
+            23,
+            33,
+            43,
+            53,
+            63,
+            0,
+            0b1000_0010,
+            0b0000_0001,
+            0,
+        ];
+
+        let snapshot = mapper.map_report(&report).unwrap();
+
+        assert!(snapshot.pressed_buttons.contains("dpad_right"));
+        assert!(snapshot.pressed_buttons.contains("button_05"));
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("axis_left_x".to_string(), 13))
+        );
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("trigger_right".to_string(), 63))
+        );
+    }
+
+    #[test]
+    fn maps_dualsense_bluetooth_with_two_byte_leading_header() {
+        let mut mapper = HidMapper::new();
+        let report = [
+            0x11,
+            0xC0,
+            DUALSENSE_BLUETOOTH_REPORT_ID,
+            0,
+            14,
+            24,
+            34,
+            44,
+            54,
+            64,
+            0,
+            0b0011_0010,
+            0b0000_0001,
+            0,
+        ];
+
+        let snapshot = mapper.map_report(&report).unwrap();
+
+        assert!(snapshot.pressed_buttons.contains("dpad_right"));
+        assert!(snapshot.pressed_buttons.contains("button_01"));
+        assert!(snapshot.pressed_buttons.contains("button_02"));
+        assert!(snapshot.pressed_buttons.contains("button_05"));
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("axis_left_x".to_string(), 14))
+        );
+        assert!(
+            snapshot
+                .analog_values
+                .contains(&("trigger_right".to_string(), 64))
         );
     }
 

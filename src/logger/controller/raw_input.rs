@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 use std::io;
-use std::mem::size_of;
+use std::mem::{offset_of, size_of};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
@@ -223,7 +223,7 @@ fn raw_controller_report(raw_input_handle: HRAWINPUT) -> Option<RawControllerRep
         return None;
     }
 
-    let hid_offset = size_of::<RAWINPUTHEADER>() + size_of::<RAWHID>() - 1;
+    let hid_offset = size_of::<RAWINPUTHEADER>() + offset_of!(RAWHID, bRawData);
     if buffer.len() < hid_offset + byte_len {
         return None;
     }
