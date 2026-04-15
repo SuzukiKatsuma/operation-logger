@@ -23,8 +23,8 @@ Windows 上で、選択したアプリケーションに対する入力ログと
 - keyboard / mouse は low-level hook を使っています
 - controller は Raw Input を使っています
 - controller 実装は現状 **DualSense での利用を主対象にした最小実装**です
-- controller の一次ログでは、ボタンの意味づけやデッドゾーン処理は行いません
-- controller の analog 値は **raw_value** を保存し、正規化や丸め込みは後段分析で行う前提です
+- controller の一次ログでは、ボタンの意味づけは行いません
+- controller の analog 値は記録前にデッドゾーン処理と量子化を行います
 - 画面キャプチャは **選択したトップレベルウィンドウ** を対象に行います
 - 画面キャプチャは **動画保存** を前提とし、静止画保存は行いません
 - 画面キャプチャの時刻同期は、映像への焼き込みではなく metadata CSV により行います
@@ -118,13 +118,18 @@ Windows 上で、選択したアプリケーションに対する入力ログと
 - `timestamp`
 - `device_id`
 - `control`
-- `raw_value`
+- `value`
 
 方針:
 - selected process が foreground のときだけ記録します
-- 値が変化したときだけ記録します
-- 一次ログには `raw_value` のみを保存します
-- デッドゾーン処理や正規化は後段の分析で行う前提です
+- analog 入力は記録前にデッドゾーン処理を行います
+- stick 系 (`axis_left_x`, `axis_left_y`, `axis_right_x`, `axis_right_y`) は中心値 128 からの差分が 16 以内なら 0 入力相当（中心値 128）として扱います
+- trigger 系 (`trigger_left`, `trigger_right`) は 30 以下を 0 として扱います
+- stick の閾値 16 は、Unity Input System の `defaultDeadzoneMin = 0.125` を 8-bit 生値へ近似した値です（中心差分として扱うため、厳密モデルではなく近似値を採用）
+- trigger の閾値 30 は、XInput の `XINPUT_GAMEPAD_TRIGGER_THRESHOLD` に合わせています
+- デッドゾーン処理後の値を、0-255 の 32 段階に量子化してから記録します
+- 量子化後の値が変化したときだけ記録します
+- `value` は前処理（デッドゾーン + 量子化）後の値です
 
 ### capture.mp4
 

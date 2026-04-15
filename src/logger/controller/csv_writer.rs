@@ -43,7 +43,7 @@ impl ControllerCsvWriter {
             time::utc_timestamp_millis(),
             csv::escape(&event.device_id),
             csv::escape(&event.control),
-            event.raw_value
+            event.value
         )
     }
 
@@ -54,7 +54,7 @@ impl ControllerCsvWriter {
 
     fn write_headers(&mut self) -> io::Result<()> {
         writeln!(self.button_writer, "timestamp,device_id,button,event")?;
-        writeln!(self.analog_writer, "timestamp,device_id,control,raw_value")
+        writeln!(self.analog_writer, "timestamp,device_id,control,value")
     }
 }
 
@@ -85,7 +85,7 @@ mod tests {
             .write_analog(&ControllerAnalogEvent {
                 device_id: "rawhid_0001".to_string(),
                 control: "axis_left_x".to_string(),
-                raw_value: 127,
+                value: 127,
             })
             .unwrap();
         writer.flush().unwrap();
@@ -100,7 +100,7 @@ mod tests {
         assert!(button_csv.contains(",rawhid_0001,button_01,keydown"));
         assert_eq!(
             analog_csv.lines().next(),
-            Some("timestamp,device_id,control,raw_value")
+            Some("timestamp,device_id,control,value")
         );
         assert!(analog_csv.contains(",rawhid_0001,axis_left_x,127"));
 
