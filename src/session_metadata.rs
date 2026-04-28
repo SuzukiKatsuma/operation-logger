@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use windows::Win32::System::SystemInformation::GetSystemTime;
 
 use crate::AppWindow;
@@ -13,6 +14,8 @@ const SESSION_METADATA_FILE: &str = "session_metadata.json";
 pub struct SessionMetadata {
     pub operation_logger_version: String,
     pub is_production_build: bool,
+    pub local_participant_id: String,
+    pub session_id: String,
     pub started_at_utc: String,
     pub target_app: SessionTargetApp,
 }
@@ -23,10 +26,16 @@ pub struct SessionTargetApp {
     pub process_name: String,
 }
 
-pub(crate) fn write_session_metadata(log_dir: &Path, app: &AppWindow) -> io::Result<()> {
+pub(crate) fn write_session_metadata(
+    log_dir: &Path,
+    app: &AppWindow,
+    local_participant_id: &str,
+) -> io::Result<()> {
     let metadata = SessionMetadata {
         operation_logger_version: env!("CARGO_PKG_VERSION").to_string(),
         is_production_build: !cfg!(debug_assertions),
+        local_participant_id: local_participant_id.to_string(),
+        session_id: Uuid::new_v4().to_string(),
         started_at_utc: utc_timestamp_millis(),
         target_app: SessionTargetApp {
             title: app.title.clone(),
@@ -54,7 +63,7 @@ fn write_session_metadata_json(log_dir: &Path, metadata: &SessionMetadata) -> io
     file.flush()
 }
 
-fn utc_timestamp_millis() -> String {
+pub(crate) fn utc_timestamp_millis() -> String {
     // SAFETY: GetSystemTime returns the current UTC SYSTEMTIME by value and has
     // no caller-owned pointer preconditions.
     let now = unsafe { GetSystemTime() };
@@ -105,13 +114,18 @@ mod tests {
             process_name: Some("game.exe".to_string()),
         };
 
-        write_session_metadata(&dir, &app).unwrap();
+        write_session_metadata(&dir, &app, "8dd7f0c2-6e33-4ed4-a34f-0a5b7fd4b7d8").unwrap();
 
         let json = fs::read_to_string(dir.join(SESSION_METADATA_FILE)).unwrap();
         let parsed: SessionMetadata = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.operation_logger_version, env!("CARGO_PKG_VERSION"));
         assert_eq!(parsed.is_production_build, !cfg!(debug_assertions));
+        assert_eq!(
+            parsed.local_participant_id,
+            "8dd7f0c2-6e33-4ed4-a34f-0a5b7fd4b7d8"
+        );
+        assert!(uuid::Uuid::parse_str(&parsed.session_id).is_ok());
         assert_eq!(parsed.target_app.title, "Game Window");
         assert_eq!(parsed.target_app.process_name, "game.exe");
 
@@ -136,7 +150,7 @@ mod tests {
             process_name: None,
         };
 
-        write_session_metadata(&dir, &app).unwrap();
+        write_session_metadata(&dir, &app, "8dd7f0c2-6e33-4ed4-a34f-0a5b7fd4b7d8").unwrap();
 
         let json = fs::read_to_string(dir.join(SESSION_METADATA_FILE)).unwrap();
         let parsed: SessionMetadata = serde_json::from_str(&json).unwrap();

@@ -2,8 +2,8 @@ use std::error::Error;
 use std::io::{self, Write};
 
 use operation_logger::{
-    AppWindow, create_operation_log_directory, list_running_applications, start_input_logging,
-    start_screen_capture,
+    AppWindow, create_operation_log_directory, list_running_applications,
+    load_or_create_local_participant_config, start_input_logging, start_screen_capture,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -17,8 +17,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_applications(&apps);
 
     let selected = select_application(&apps)?;
-    let log_dir = create_operation_log_directory(selected)?;
+    let local_participant_config = load_or_create_local_participant_config()?;
+    let log_dir =
+        create_operation_log_directory(selected, &local_participant_config.local_participant_id)?;
 
+    println!(
+        "local_participant_id: {}",
+        local_participant_config.local_participant_id
+    );
     println!("Created log directory: {}", log_dir.display());
     let input_session = start_input_logging(selected, &log_dir)?;
     let capture_session = start_screen_capture(selected, &log_dir)?;

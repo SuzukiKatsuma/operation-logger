@@ -12,6 +12,7 @@ export component MainWindow inherits Window {
     in-out property <string> selected_title: "-";
     in-out property <string> selected_process_name: "-";
     in-out property <string> selected_process_id: "-";
+    in-out property <string> local_participant_id: "-";
     in-out property <string> status_text: "Ready";
 
     callback refresh_clicked();
@@ -23,6 +24,10 @@ export component MainWindow inherits Window {
     VerticalBox {
         padding: 12px;
         spacing: 10px;
+
+        Text {
+            text: "local_participant_id: " + root.local_participant_id;
+        }
 
         HorizontalBox {
             spacing: 8px;
@@ -44,11 +49,12 @@ export component MainWindow inherits Window {
             border-width: 1px;
             border-color: #cccccc;
             border-radius: 4px;
-            height: 120px;
+            height: 80px;
 
             VerticalBox {
                 padding: 10px;
                 spacing: 6px;
+                alignment: center;
                 Text { text: "title: " + root.selected_title; }
                 Text { text: "process_name: " + root.selected_process_name; }
                 Text { text: "process_id: " + root.selected_process_id; }
@@ -78,7 +84,8 @@ export component MainWindow inherits Window {
             border-width: 1px;
             border-color: #cccccc;
             border-radius: 4px;
-            height: 72px;
+            height: 64px;
+
             Text {
                 text: root.status_text;
                 wrap: word-wrap;

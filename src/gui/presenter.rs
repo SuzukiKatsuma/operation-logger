@@ -10,7 +10,8 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::{
     InputLoggingSession, ScreenCaptureSession, create_operation_log_directory,
-    list_running_applications, start_input_logging, start_screen_capture,
+    list_running_applications, load_or_create_local_participant_config, start_input_logging,
+    start_screen_capture,
 };
 
 use super::MainWindow;
@@ -27,16 +28,18 @@ struct GuiState {
     selected_index: Option<usize>,
     session: Option<ActiveSession>,
     last_log_dir: Option<PathBuf>,
+    local_participant_id: String,
     status_text: String,
 }
 
 impl GuiState {
-    fn new() -> Self {
+    fn new(local_participant_id: String) -> Self {
         Self {
             apps: Vec::new(),
             selected_index: None,
             session: None,
             last_log_dir: None,
+            local_participant_id,
             status_text: "Ready".to_string(),
         }
     }
@@ -80,8 +83,11 @@ impl GuiState {
 }
 
 pub fn run() -> Result<(), Box<dyn Error>> {
+    let local_participant_config = load_or_create_local_participant_config()?;
     let ui = MainWindow::new()?;
-    let state = Rc::new(RefCell::new(GuiState::new()));
+    let state = Rc::new(RefCell::new(GuiState::new(
+        local_participant_config.local_participant_id,
+    )));
 
     {
         let mut state_mut = state.borrow_mut();
@@ -238,7 +244,7 @@ fn start_logging(state: &mut GuiState) {
         return;
     };
 
-    let log_dir = match create_operation_log_directory(&selected) {
+    let log_dir = match create_operation_log_directory(&selected, &state.local_participant_id) {
         Ok(dir) => dir,
         Err(error) => {
             state.status_text = format!("Failed to create log directory: {error}");
@@ -379,5 +385,6 @@ fn sync_ui(ui: &MainWindow, state: &GuiState) {
 
     ui.set_logging(state.is_logging());
     ui.set_has_log_dir(state.last_log_dir.is_some());
+    ui.set_local_participant_id(state.local_participant_id.clone().into());
     ui.set_status_text(state.status_text.clone().into());
 }
