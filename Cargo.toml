@@ -1,6 +1,6 @@
 [package]
 name = "operation-logger"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A Windows input logging tool for recording keyboard, mouse, and controller operations for a selected application."
 readme = "README.md"
@@ -26,6 +26,7 @@ path = "src/bin/gui.rs"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software"] }
+uuid = { version = "1", features = ["v4"] }
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",

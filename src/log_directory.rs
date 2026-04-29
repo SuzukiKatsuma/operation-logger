@@ -9,10 +9,13 @@ use crate::session_metadata::write_session_metadata;
 
 const OPERATION_LOGS_DIR: &str = "OperationLogs";
 
-pub fn create_operation_log_directory(app: &AppWindow) -> io::Result<PathBuf> {
+pub fn create_operation_log_directory(
+    app: &AppWindow,
+    local_participant_id: &str,
+) -> io::Result<PathBuf> {
     let root = operation_logs_root()?;
     let timestamp = local_timestamp_for_directory_name();
-    create_operation_log_directory_in(&root, &timestamp, app)
+    create_operation_log_directory_in(&root, &timestamp, app, local_participant_id)
 }
 
 fn operation_logs_root() -> io::Result<PathBuf> {
@@ -41,10 +44,11 @@ fn create_operation_log_directory_in(
     root: &Path,
     timestamp: &str,
     app: &AppWindow,
+    local_participant_id: &str,
 ) -> io::Result<PathBuf> {
     let path = build_operation_log_directory_path(root, timestamp, app);
     fs::create_dir_all(&path)?;
-    write_session_metadata(&path, app)?;
+    write_session_metadata(&path, app, local_participant_id)?;
     Ok(path)
 }
 
@@ -86,7 +90,13 @@ mod tests {
             process_name: Some("test-app.exe".to_string()),
         };
 
-        let path = create_operation_log_directory_in(&root, "2026-04-13_012345", &app).unwrap();
+        let path = create_operation_log_directory_in(
+            &root,
+            "2026-04-13_012345",
+            &app,
+            "8dd7f0c2-6e33-4ed4-a34f-0a5b7fd4b7d8",
+        )
+        .unwrap();
 
         assert!(path.is_dir());
         assert!(path.join("session_metadata.json").is_file());
@@ -108,7 +118,13 @@ mod tests {
             process_name: Some(r#"bad<>:"/\|?*.exe"#.to_string()),
         };
 
-        let path = create_operation_log_directory_in(&root, "2026-04-13_012345", &app).unwrap();
+        let path = create_operation_log_directory_in(
+            &root,
+            "2026-04-13_012345",
+            &app,
+            "8dd7f0c2-6e33-4ed4-a34f-0a5b7fd4b7d8",
+        )
+        .unwrap();
 
         assert!(path.is_dir());
         assert!(path.join("session_metadata.json").is_file());
