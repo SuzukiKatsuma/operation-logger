@@ -1,6 +1,6 @@
 [package]
 name = "operation-logger"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A Windows input logging tool for recording keyboard, mouse, and controller operations for a selected application."
 readme = "README.md"
