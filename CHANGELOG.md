@@ -1,3 +1,12 @@
+## 0.2.1 (2026-11-05)
+
+* Fixed MP4 recordings being shorter than the actual capture duration when the effective capture frame rate dropped below 10 FPS.
+* Maintained a constant 10 FPS video timeline by duplicating frames during capture gaps.
+* Preserved original capture timestamps for duplicated frames without changing the `capture_metadata.csv` schema.
+* Added `capture_session_metadata.json` to record capture start/end times and frame statistics.
+* Separated frame capture and video encoding into independent threads.
+* Added tests for video duration and metadata consistency, including Media Foundation decoding tests.
+
 ## 0.2.0 (2026-04-30)
 
 * Added persistent local participant configuration at `%APPDATA%\operation-logger\config.json`.
