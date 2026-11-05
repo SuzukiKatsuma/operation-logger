@@ -288,9 +288,9 @@ mod tests {
     use std::path::PathBuf;
 
     use windows::Win32::Media::MediaFoundation::{
-        MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-        MF_SOURCE_READERF_ENDOFSTREAM, MFCreateMediaType, MFCreateSourceReaderFromURL,
-        MFMediaType_Video, MFVideoFormat_RGB32,
+        MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
+        MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM, MFCreateAttributes,
+        MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFVideoFormat_RGB32,
     };
     use windows::core::PCWSTR;
 
@@ -331,7 +331,14 @@ mod tests {
         // SAFETY: URL is NUL-terminated and alive; reader and media type are valid
         // COM objects, and all ReadSample out-pointers refer to local storage.
         unsafe {
-            let reader = MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), None).unwrap();
+            let mut attributes = None;
+            MFCreateAttributes(&mut attributes, 1).unwrap();
+            let attributes = attributes.unwrap();
+            // Enable the YUV-to-RGB32 conversion required by the decode check.
+            attributes
+                .SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1)
+                .unwrap();
+            let reader = MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attributes).unwrap();
             let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
             let media_type = MFCreateMediaType().unwrap();
             media_type
