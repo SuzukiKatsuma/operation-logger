@@ -19,6 +19,7 @@ use super::config::{
 pub(super) struct Mp4Encoder {
     sink_writer: IMFSinkWriter,
     stream_index: u32,
+    next_frame_index: u64,
 }
 
 impl Mp4Encoder {
@@ -46,10 +47,17 @@ impl Mp4Encoder {
         Ok(Self {
             sink_writer,
             stream_index,
+            next_frame_index: 0,
         })
     }
 
     pub(super) fn write_frame(&mut self, bgra: &[u8], frame_index: u64) -> io::Result<()> {
+        if frame_index != self.next_frame_index {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "video frame indices must be consecutive from zero",
+            ));
+        }
         let expected_len =
             (OUTPUT_WIDTH as usize) * (OUTPUT_HEIGHT as usize) * BYTES_PER_PIXEL_BGRA;
         if bgra.len() != expected_len {
@@ -60,7 +68,10 @@ impl Mp4Encoder {
         }
 
         let sample = create_media_sample(bgra)?;
-        let sample_time = frame_index as i64 * FRAME_DURATION_100NS;
+        let sample_time = i64::try_from(frame_index)
+            .ok()
+            .and_then(|index| index.checked_mul(FRAME_DURATION_100NS))
+            .ok_or_else(|| io::Error::other("video timestamp overflow"))?;
         // SAFETY: sample is newly created for this frame and not shared while
         // timestamps are being assigned.
         unsafe {
@@ -74,10 +85,11 @@ impl Mp4Encoder {
                 .WriteSample(self.stream_index, &sample)
                 .map_err(windows_error_to_io)?;
         }
+        self.next_frame_index += 1;
         Ok(())
     }
 
-    pub(super) fn finalize(self) -> io::Result<()> {
+    pub(super) fn finalize(&mut self) -> io::Result<()> {
         // SAFETY: Finalize is called once after all samples have been written.
         unsafe { self.sink_writer.Finalize() }.map_err(windows_error_to_io)
     }

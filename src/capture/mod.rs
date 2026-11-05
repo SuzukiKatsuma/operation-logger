@@ -5,6 +5,7 @@ mod layout;
 mod metadata_writer;
 mod scale;
 mod session;
+mod timeline;
 mod timing;
 mod wgc;
 

@@ -3,7 +3,7 @@ use std::io;
 use std::mem::zeroed;
 
 use windows::Graphics::Capture::{
-    Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
+    Direct3D11CaptureFrame, Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
 };
 use windows::Graphics::DirectX::Direct3D11::{IDirect3DDevice, IDirect3DSurface};
 use windows::Graphics::DirectX::DirectXPixelFormat;
@@ -27,6 +27,7 @@ use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUnini
 use windows::core::{Interface, factory};
 
 use super::config::CAPTURE_BUFFER_COUNT;
+use super::timing::CaptureTimeMapper;
 
 pub(super) struct WindowFrameSource {
     device: ID3D11Device,
@@ -38,7 +39,7 @@ pub(super) struct WindowFrameSource {
 }
 
 impl WindowFrameSource {
-    pub(super) fn start(hwnd: isize) -> io::Result<Self> {
+    pub(super) fn start(hwnd: isize) -> io::Result<(Self, i64)> {
         if !GraphicsCaptureSession::IsSupported().map_err(windows_error_to_io)? {
             return Err(io::Error::other(
                 "Windows.Graphics.Capture is not supported on this system",
@@ -62,23 +63,40 @@ impl WindowFrameSource {
         let session = frame_pool
             .CreateCaptureSession(&item)
             .map_err(windows_error_to_io)?;
+        let started_at_100ns = CaptureTimeMapper::now_100ns()?;
         session.StartCapture().map_err(windows_error_to_io)?;
 
-        Ok(Self {
-            device,
-            context,
-            direct3d_device,
-            frame_pool,
-            _session: session,
-            size,
-        })
+        Ok((
+            Self {
+                device,
+                context,
+                direct3d_device,
+                frame_pool,
+                _session: session,
+                size,
+            },
+            started_at_100ns,
+        ))
     }
 
     pub(super) fn try_next_frame(&mut self) -> io::Result<Option<CapturedFrame>> {
-        let frame = match self.frame_pool.TryGetNextFrame() {
-            Ok(frame) => frame,
-            Err(_) => return Ok(None),
-        };
+        let mut raw_frame = std::ptr::null_mut();
+        // SAFETY: Use the same ABI as windows-rs, but inspect successful null
+        // separately. Its generated wrapper turns null into an error.
+        // https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.trygetnextframe
+        unsafe {
+            (Interface::vtable(&self.frame_pool).TryGetNextFrame)(
+                Interface::as_raw(&self.frame_pool),
+                &mut raw_frame,
+            )
+            .ok()
+        }
+        .map_err(windows_error_to_io)?;
+        if raw_frame.is_null() {
+            return Ok(None);
+        }
+        // SAFETY: A successful non-null ABI result transfers one owned reference.
+        let frame = unsafe { Direct3D11CaptureFrame::from_raw(raw_frame) };
 
         let content_size = frame.ContentSize().map_err(windows_error_to_io)?;
         if content_size.Width <= 0 || content_size.Height <= 0 {
@@ -116,6 +134,13 @@ impl WindowFrameSource {
                 })
             },
         )
+    }
+}
+
+impl WindowFrameSource {
+    pub(super) fn stop(&self) -> io::Result<()> {
+        self._session.Close().map_err(windows_error_to_io)?;
+        self.frame_pool.Close().map_err(windows_error_to_io)
     }
 }
 

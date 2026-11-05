@@ -4,8 +4,6 @@ use windows::Win32::Foundation::FILETIME;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 
-use super::config::FRAME_DURATION_100NS;
-
 const HUNDRED_NS_PER_SECOND: i128 = 10_000_000;
 const FILETIME_UNIX_EPOCH_100NS: i128 = 116_444_736_000_000_000;
 
@@ -31,35 +29,9 @@ impl CaptureTimeMapper {
         let frame_filetime_100ns = self.utc_anchor_filetime_100ns + delta;
         format_filetime_utc_millis(frame_filetime_100ns)
     }
-}
 
-#[derive(Debug, Clone, Copy)]
-pub(super) struct FrameDecimator {
-    next_emit_at_100ns: Option<i64>,
-}
-
-impl FrameDecimator {
-    pub(super) fn new() -> Self {
-        Self {
-            next_emit_at_100ns: None,
-        }
-    }
-
-    pub(super) fn should_emit(&mut self, system_relative_time_100ns: i64) -> bool {
-        match self.next_emit_at_100ns {
-            None => {
-                self.next_emit_at_100ns = Some(system_relative_time_100ns + FRAME_DURATION_100NS);
-                true
-            }
-            Some(next_emit_at_100ns) if system_relative_time_100ns < next_emit_at_100ns => false,
-            Some(mut next_emit_at_100ns) => {
-                while next_emit_at_100ns <= system_relative_time_100ns {
-                    next_emit_at_100ns += FRAME_DURATION_100NS;
-                }
-                self.next_emit_at_100ns = Some(next_emit_at_100ns);
-                true
-            }
-        }
+    pub(super) fn now_100ns() -> io::Result<i64> {
+        qpc_as_100ns_now()
     }
 }
 
@@ -165,15 +137,5 @@ mod tests {
             anchor.utc_timestamp_for_system_relative(1_000_000 + 20_000),
             "1970-01-01T00:00:05.002"
         );
-    }
-
-    #[test]
-    fn frame_decimator_emits_on_interval() {
-        let mut decimator = FrameDecimator::new();
-
-        assert!(decimator.should_emit(1_000));
-        assert!(!decimator.should_emit(1_000 + FRAME_DURATION_100NS / 2));
-        assert!(decimator.should_emit(1_000 + FRAME_DURATION_100NS));
-        assert!(decimator.should_emit(1_000 + FRAME_DURATION_100NS * 2 + 50));
     }
 }
