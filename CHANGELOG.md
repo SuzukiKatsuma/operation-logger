@@ -1,3 +1,12 @@
+## 0.3.0 (2026-11-11)
+
+* Switched to monitor-based capture with cropping to the selected application window.
+* Added support for recording overlapping menus, dialogs, and popups within the target window area.
+* Added dynamic cropping to follow window movement and resizing.
+* Added `window_x` and `window_y` to `capture_metadata.csv` while preserving existing input log formats.
+* Improved capture efficiency with GPU-based cropping and reusable staging textures.
+* Added tests for window geometry, DPI handling, and monitor-based capture.
+
 ## 0.2.1 (2026-11-05)
 
 * Fixed MP4 recordings being shorter than the actual capture duration when the effective capture frame rate dropped below 10 FPS.
