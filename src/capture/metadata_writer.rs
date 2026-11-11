@@ -3,8 +3,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 const CAPTURE_METADATA_FILE: &str = "capture_metadata.csv";
-const CAPTURE_METADATA_HEADER: &str =
-    "frame_index,system_relative_time,utc_timestamp,content_width,content_height\n";
+const CAPTURE_METADATA_HEADER: &str = "frame_index,system_relative_time,utc_timestamp,content_width,content_height,window_x,window_y\n";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CaptureFrameMetadata {
@@ -13,6 +12,8 @@ pub(super) struct CaptureFrameMetadata {
     pub(super) utc_timestamp: String,
     pub(super) content_width: u32,
     pub(super) content_height: u32,
+    pub(super) window_x: i32,
+    pub(super) window_y: i32,
 }
 
 impl CaptureFrameMetadata {
@@ -22,6 +23,8 @@ impl CaptureFrameMetadata {
         utc_timestamp: String,
         content_width: u32,
         content_height: u32,
+        window_x: i32,
+        window_y: i32,
     ) -> Self {
         Self {
             frame_index,
@@ -29,17 +32,21 @@ impl CaptureFrameMetadata {
             utc_timestamp,
             content_width,
             content_height,
+            window_x,
+            window_y,
         }
     }
 
     pub(super) fn to_csv_row(&self) -> String {
         format!(
-            "{},{},{},{},{}",
+            "{},{},{},{},{},{},{}",
             self.frame_index,
             self.system_relative_time,
             self.utc_timestamp,
             self.content_width,
-            self.content_height
+            self.content_height,
+            self.window_x,
+            self.window_y
         )
     }
 }
@@ -77,25 +84,52 @@ mod tests {
 
     #[test]
     fn metadata_row_matches_capture_schema() {
-        let metadata =
-            CaptureFrameMetadata::new(3, 123456, "2026-04-12T19:05:44.116".to_string(), 1920, 1080);
+        let metadata = CaptureFrameMetadata::new(
+            3,
+            123456,
+            "2026-04-12T19:05:44.116".to_string(),
+            1920,
+            1080,
+            -1920,
+            125,
+        );
 
         assert_eq!(
             metadata.to_csv_row(),
-            "3,123456,2026-04-12T19:05:44.116,1920,1080"
+            "3,123456,2026-04-12T19:05:44.116,1920,1080,-1920,125"
+        );
+        assert_eq!(
+            CAPTURE_METADATA_HEADER,
+            "frame_index,system_relative_time,utc_timestamp,content_width,content_height,window_x,window_y\n"
         );
     }
 
     #[test]
     fn metadata_rows_keep_content_size_per_frame() {
-        let first =
-            CaptureFrameMetadata::new(7, 1000, "2026-04-12T19:05:44.116".to_string(), 1280, 720);
-        let resized =
-            CaptureFrameMetadata::new(8, 2000, "2026-04-12T19:05:44.216".to_string(), 1920, 1080);
+        let first = CaptureFrameMetadata::new(
+            7,
+            1000,
+            "2026-04-12T19:05:44.116".to_string(),
+            1280,
+            720,
+            -100,
+            50,
+        );
+        let resized = CaptureFrameMetadata::new(
+            8,
+            2000,
+            "2026-04-12T19:05:44.216".to_string(),
+            1920,
+            1080,
+            10,
+            -200,
+        );
 
         assert_eq!(first.content_width, 1280);
         assert_eq!(first.content_height, 720);
         assert_eq!(resized.content_width, 1920);
         assert_eq!(resized.content_height, 1080);
+        assert_eq!((first.window_x, first.window_y), (-100, 50));
+        assert_eq!((resized.window_x, resized.window_y), (10, -200));
     }
 }

@@ -170,6 +170,8 @@ impl CaptureOutput {
                             mapper.utc_timestamp_for_system_relative(frame.system_relative_time),
                             frame.content_size.width,
                             frame.content_size.height,
+                            frame.window_x,
+                            frame.window_y,
                         ),
                     };
                     timeline.accept(frame.system_relative_time, output, |index, frame| {
@@ -322,6 +324,8 @@ mod tests {
             row_pitch: width as usize * 4,
             system_relative_time: time,
             content_size: ContentSize { width, height: 2 },
+            window_x: -(width as i32) * 100,
+            window_y: width as i32 * 50,
         }
     }
 
@@ -428,6 +432,15 @@ mod tests {
             );
             assert_eq!(row[3].parse::<u32>().unwrap(), source_widths[index]);
             assert_eq!(row[4], "2");
+            assert_eq!(row.len(), 7);
+            assert_eq!(
+                row[5].parse::<i32>().unwrap(),
+                -(source_widths[index] as i32) * 100
+            );
+            assert_eq!(
+                row[6].parse::<i32>().unwrap(),
+                source_widths[index] as i32 * 50
+            );
         }
         // Identical source fields identify a duplicate and trace it to the first
         // output row with that same real observation timestamp.
@@ -480,7 +493,13 @@ mod tests {
         let csv = fs::read_to_string(directory.0.join("capture_metadata.csv")).unwrap();
         let rows: Vec<_> = csv.lines().skip(1).collect();
         assert_eq!(rows.len(), 4);
-        for row in rows {
+        let first_source_fields = rows[0].split_once(',').unwrap().1;
+        for row in &rows {
+            assert_eq!(row.split_once(',').unwrap().1, first_source_fields);
+            assert_eq!(
+                row.split(',').collect::<Vec<_>>()[3..],
+                ["2", "2", "-200", "100"]
+            );
             assert_eq!(
                 row.split(',').nth(1).unwrap().parse::<i64>().unwrap(),
                 start + 2 * d + 1
@@ -537,7 +556,7 @@ mod tests {
         let mapper = CaptureTimeMapper::capture_now().unwrap();
         let start = CaptureTimeMapper::now_100ns().unwrap();
         let d = FRAME_DURATION_100NS;
-        for step in [1, 2] {
+        for (step, stop_offset) in [(1, 0), (2, 0), (1, d / 3), (2, d / 3)] {
             let directory = TestDirectory::new();
             let (tx, rx) = mpsc::channel();
             tx.send(CaptureEvent::Begin(start, mapper)).unwrap();
@@ -546,7 +565,7 @@ mod tests {
                     .unwrap();
             }
             tx.send(CaptureEvent::Stop {
-                at: start + 100 * d,
+                at: start + 100 * d + stop_offset,
                 received: 100 / step as u64,
                 dropped: 0,
             })
@@ -556,8 +575,11 @@ mod tests {
             output.run(rx, &directory.0).unwrap();
             drop(output);
             let times = decoded_timestamps(&directory.0.join(CAPTURE_FILE));
-            assert_eq!(times.len(), 100);
-            assert_eq!(times.last().copied().unwrap() + d, 10 * 10_000_000);
+            let count = if stop_offset == 0 { 100 } else { 101 };
+            assert_eq!(times.len(), count);
+            let duration = times.last().copied().unwrap() + d;
+            assert!(duration >= 100 * d + stop_offset);
+            assert!(duration - (100 * d + stop_offset) < d);
             let csv = fs::read_to_string(directory.0.join("capture_metadata.csv")).unwrap();
             assert_eq!(csv.lines().skip(1).count(), times.len());
             let manifest: serde_json::Value = serde_json::from_slice(
@@ -565,8 +587,8 @@ mod tests {
             )
             .unwrap();
             assert_eq!(manifest["adopted_frame_count"], 100 / step);
-            assert_eq!(manifest["duplicated_frame_count"], 100 - 100 / step);
-            assert_eq!(manifest["video_duration_seconds"], 10.0);
+            assert_eq!(manifest["duplicated_frame_count"], count - 100 / step);
+            assert_eq!(manifest["video_duration_seconds"], count as f64 / 10.0);
         }
     }
 }
