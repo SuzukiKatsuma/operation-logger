@@ -5,6 +5,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TrySendError};
 use std::thread;
 use std::time::Duration;
 
+use crate::startup::Startup;
+
 use super::config::{CAPTURE_FILE, FRAME_DURATION_100NS, TARGET_FPS};
 use super::encoder::{MediaFoundationRuntime, Mp4Encoder};
 use super::frame_source::{CapturedFrame, WinRtApartment, WindowFrameSource};
@@ -29,12 +31,14 @@ pub(super) fn run_capture(
     log_dir: &Path,
     stop_rx: Receiver<()>,
     ready_tx: Sender<io::Result<()>>,
+    startup: Startup,
 ) -> io::Result<()> {
     // Bound memory and isolate capture from H.264 writes. Encoder overload drops
     // incoming observations (reported below), never video output slots.
     let (event_tx, event_rx) = mpsc::sync_channel(4);
     let (encoder_ready_tx, encoder_ready_rx) = mpsc::channel();
     let output_dir = log_dir.to_path_buf();
+    let output_ready_tx = ready_tx.clone();
     let output_thread = thread::spawn(move || {
         // These guards outlive the output and are released on their owning thread.
         let setup = (|| {
@@ -46,7 +50,17 @@ pub(super) fn run_capture(
         match setup {
             Ok((_winrt, _mf, mut output)) => {
                 let _ = encoder_ready_tx.send(Ok(()));
-                output.run(event_rx, &output_dir)
+                output.ready_tx = Some(output_ready_tx);
+                let result = output.run(event_rx, &output_dir);
+                if let Err(error) = &result {
+                    if let Some(tx) = output.ready_tx.take() {
+                        let _ = tx.send(Err(io::Error::new(
+                            error.kind(),
+                            format!("first frame encoding/metadata write failed: {error}"),
+                        )));
+                    }
+                }
+                result
             }
             Err(error) => {
                 let _ = encoder_ready_tx.send(Err(clone_io_error(&error)));
@@ -56,16 +70,17 @@ pub(super) fn run_capture(
     });
 
     let capture_result = (|| {
-        encoder_ready_rx
-            .recv()
-            .map_err(|_| io::Error::other("encoder exited during startup"))??;
+        startup.wait(&encoder_ready_rx)?;
+        startup.enter("Windows screen capture initialization")?;
         let _winrt = WinRtApartment::init()?;
         let mapper = CaptureTimeMapper::capture_now()?;
         let (mut source, started_at) = WindowFrameSource::start(hwnd)?;
         event_tx
             .send(CaptureEvent::Begin(started_at, mapper))
             .map_err(|_| io::Error::other("encoder disconnected"))?;
-        let _ = ready_tx.send(Ok(()));
+        startup.enter(
+            "first captured and encoded frame (keep the target window visible and restored)",
+        )?;
 
         let mut received = 0;
         let mut dropped = 0;
@@ -131,13 +146,22 @@ struct OutputFrame {
 struct CaptureOutput {
     encoder: Mp4Encoder,
     metadata_writer: CaptureMetadataWriter,
+    ready_tx: Option<Sender<io::Result<()>>>,
 }
 
 impl CaptureOutput {
     fn create(log_dir: &Path) -> io::Result<Self> {
         Ok(Self {
-            encoder: Mp4Encoder::create(&log_dir.join(CAPTURE_FILE))?,
-            metadata_writer: CaptureMetadataWriter::create(log_dir)?,
+            encoder: Mp4Encoder::create(&log_dir.join(CAPTURE_FILE)).map_err(|error| {
+                io::Error::new(error.kind(), format!("MP4 encoder initialization: {error}"))
+            })?,
+            metadata_writer: CaptureMetadataWriter::create(log_dir).map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!("capture metadata CSV initialization: {error}"),
+                )
+            })?,
+            ready_tx: None,
         })
     }
 
@@ -145,7 +169,17 @@ impl CaptureOutput {
         self.encoder.write_frame(&frame.bgra, index)?;
         let mut metadata = frame.metadata.clone();
         metadata.frame_index = index;
-        self.metadata_writer.write(&metadata)
+        self.metadata_writer.write(&metadata)?;
+        if self.ready_tx.is_some() {
+            // WriteSample succeeded for an actual WGC observation. Flush the
+            // first metadata row too before publishing readiness. MF may buffer
+            // compressed output internally; final MP4 validation is separate.
+            self.metadata_writer.flush()?;
+            if let Some(tx) = self.ready_tx.take() {
+                let _ = tx.send(Ok(()));
+            }
+        }
+        Ok(())
     }
 
     fn run(&mut self, events: Receiver<CaptureEvent>, log_dir: &Path) -> io::Result<()> {
@@ -327,6 +361,40 @@ mod tests {
             window_x: -(width as i32) * 100,
             window_y: width as i32 * 50,
         }
+    }
+
+    #[test]
+    fn readiness_requires_a_successful_first_encode_and_metadata_flush() {
+        let _winrt = WinRtApartment::init().unwrap();
+        let _mf = MediaFoundationRuntime::init().unwrap();
+        let directory = TestDirectory::new();
+        let mut output = CaptureOutput::create(&directory.0).unwrap();
+        let (tx, rx) = mpsc::channel();
+        output.ready_tx = Some(tx);
+        assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        let mut frame = OutputFrame {
+            bgra: vec![],
+            metadata: CaptureFrameMetadata::new(0, 123, "utc".into(), 2, 2, 0, 0),
+        };
+        assert!(output.write(0, &frame).is_err());
+        assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        frame.bgra = CpuBgraScaler.scale_to_output(&[96; 16], 2, 2, 8);
+        output.write(0, &frame).unwrap();
+        rx.recv_timeout(Duration::from_secs(1)).unwrap().unwrap();
+        // The writer is still open: the first row must already be on disk.
+        assert_eq!(
+            fs::read_to_string(directory.0.join("capture_metadata.csv"))
+                .unwrap()
+                .lines()
+                .count(),
+            2
+        );
+        output.write(1, &frame).unwrap();
+        assert!(matches!(
+            rx.try_recv(),
+            Err(mpsc::TryRecvError::Disconnected)
+        ));
+        output.encoder.finalize().unwrap();
     }
 
     // Exercise the actual H.264/MP4 writer and decoder, not a mock frame sink.

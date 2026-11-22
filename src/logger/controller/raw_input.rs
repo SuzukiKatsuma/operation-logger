@@ -1,3 +1,4 @@
+use crate::startup::Startup;
 use std::ffi::c_void;
 use std::io;
 use std::mem::{offset_of, size_of};
@@ -32,7 +33,11 @@ pub(super) struct RawInputSession {
 }
 
 impl RawInputSession {
-    pub(super) fn start(sender: Sender<RawControllerReport>) -> io::Result<Self> {
+    pub(super) fn start(
+        sender: Sender<RawControllerReport>,
+        startup: &Startup,
+    ) -> io::Result<Self> {
+        startup.enter("controller Raw Input initialization")?;
         let (ready_tx, ready_rx) = mpsc::channel();
 
         let thread = thread::spawn(move || {
@@ -46,9 +51,7 @@ impl RawInputSession {
             result
         });
 
-        let thread_id = ready_rx
-            .recv()
-            .map_err(|_| io::Error::other("controller raw input thread exited before startup"))??;
+        let (thread_id, thread) = startup.message_thread(ready_rx, thread)?;
 
         Ok(Self {
             thread_id,

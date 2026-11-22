@@ -47,6 +47,7 @@ pub(super) struct WindowFrameSource {
     hwnd: HWND,
     monitor: HMONITOR,
     staging: Option<ID3D11Texture2D>,
+    closed: bool,
 }
 
 impl WindowFrameSource {
@@ -98,6 +99,7 @@ impl WindowFrameSource {
                 hwnd,
                 monitor,
                 staging: None,
+                closed: false,
             },
             started_at_100ns,
         ))
@@ -186,9 +188,22 @@ impl WindowFrameSource {
 }
 
 impl WindowFrameSource {
-    pub(super) fn stop(&self) -> io::Result<()> {
-        self._session.Close().map_err(windows_error_to_io)?;
-        self.frame_pool.Close().map_err(windows_error_to_io)
+    pub(super) fn stop(&mut self) -> io::Result<()> {
+        if self.closed {
+            return Ok(());
+        }
+        self.closed = true;
+        let session_result = self._session.Close().map_err(windows_error_to_io);
+        let pool_result = self.frame_pool.Close().map_err(windows_error_to_io);
+        session_result.and(pool_result)
+    }
+}
+
+impl Drop for WindowFrameSource {
+    fn drop(&mut self) {
+        // Covers startup failures between creating the source and entering the
+        // capture loop. Normal stop has already marked the source closed.
+        let _ = self.stop();
     }
 }
 

@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
 use crate::AppWindow;
+use crate::startup::Startup;
 
 mod csv_writer;
 pub(super) mod foreground;
@@ -22,13 +23,18 @@ pub(super) struct KeyboardLoggingSession {
 }
 
 impl KeyboardLoggingSession {
-    pub(super) fn start(selected: &AppWindow, log_dir: &Path) -> io::Result<Self> {
+    pub(super) fn start(
+        selected: &AppWindow,
+        log_dir: &Path,
+        startup: &Startup,
+    ) -> io::Result<Self> {
+        startup.enter("keyboard CSV initialization")?;
+        let mut writer = KeyboardCsvWriter::new(log_dir)?;
+        startup.check()?;
         let (event_tx, event_rx) = mpsc::channel();
         let foreground = ForegroundResolver::new(selected);
-        let log_dir = PathBuf::from(log_dir);
 
         let worker = thread::spawn(move || {
-            let mut writer = KeyboardCsvWriter::new(&log_dir)?;
             let mut filter = KeyboardEventFilter::new();
 
             for event in event_rx {
@@ -47,7 +53,7 @@ impl KeyboardLoggingSession {
             writer.flush()
         });
 
-        let hook = match KeyboardHook::start(event_tx) {
+        let hook = match KeyboardHook::start(event_tx, startup) {
             Ok(hook) => hook,
             Err(error) => {
                 let _ = worker.join();
@@ -66,17 +72,16 @@ impl KeyboardLoggingSession {
     }
 
     fn stop_inner(&mut self) -> io::Result<()> {
-        if let Some(hook) = self.hook.take() {
-            hook.stop()?;
-        }
+        let stop_result = self.hook.take().map_or(Ok(()), |source| source.stop());
 
-        if let Some(worker) = self.worker.take() {
+        let worker_result = if let Some(worker) = self.worker.take() {
             worker
                 .join()
                 .map_err(|_| io::Error::other("keyboard logging worker panicked"))?
         } else {
             Ok(())
-        }
+        };
+        stop_result.and(worker_result)
     }
 }
 

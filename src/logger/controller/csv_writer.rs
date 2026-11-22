@@ -22,6 +22,7 @@ impl ControllerCsvWriter {
         };
 
         writer.write_headers()?;
+        writer.flush()?;
         Ok(writer)
     }
 

@@ -19,6 +19,7 @@ impl KeyboardCsvWriter {
         };
 
         writer.write_headers()?;
+        writer.flush()?;
         Ok(writer)
     }
 

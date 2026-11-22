@@ -1,3 +1,4 @@
+use crate::startup::Startup;
 use std::io;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -21,7 +22,8 @@ pub struct KeyboardHook {
 }
 
 impl KeyboardHook {
-    pub fn start(sender: Sender<RawKeyboardEvent>) -> io::Result<Self> {
+    pub fn start(sender: Sender<RawKeyboardEvent>, startup: &Startup) -> io::Result<Self> {
+        startup.enter("keyboard hook initialization")?;
         let (ready_tx, ready_rx) = mpsc::channel();
 
         let thread = thread::spawn(move || {
@@ -83,9 +85,7 @@ impl KeyboardHook {
             unhook_result.map_err(windows_error_to_io)
         });
 
-        let thread_id = ready_rx
-            .recv()
-            .map_err(|_| io::Error::other("keyboard hook thread exited before startup"))??;
+        let (thread_id, thread) = startup.message_thread(ready_rx, thread)?;
 
         Ok(Self {
             thread_id,

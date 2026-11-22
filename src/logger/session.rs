@@ -2,6 +2,7 @@ use std::io;
 use std::path::Path;
 
 use crate::AppWindow;
+use crate::startup::Startup;
 
 use super::controller::ControllerLoggingSession;
 use super::keyboard::KeyboardLoggingSession;
@@ -15,28 +16,36 @@ pub struct InputLoggingSession {
 
 impl InputLoggingSession {
     pub fn start(target: &AppWindow, log_dir: &Path) -> io::Result<Self> {
-        let mouse = MouseLoggingSession::start(target, log_dir)?;
-        let keyboard = match KeyboardLoggingSession::start(target, log_dir) {
-            Ok(keyboard) => keyboard,
-            Err(error) => {
-                let _ = mouse.stop();
-                return Err(error);
-            }
-        };
-        let controller = match ControllerLoggingSession::start(target, log_dir) {
-            Ok(controller) => controller,
-            Err(error) => {
-                let _ = keyboard.stop();
-                let _ = mouse.stop();
-                return Err(error);
-            }
-        };
+        Self::start_with(target, log_dir, &Startup::new())
+    }
 
-        Ok(Self {
-            controller: Some(controller),
-            keyboard: Some(keyboard),
-            mouse: Some(mouse),
-        })
+    pub(crate) fn start_with(
+        target: &AppWindow,
+        log_dir: &Path,
+        startup: &Startup,
+    ) -> io::Result<Self> {
+        let mut session = Self {
+            controller: None,
+            keyboard: None,
+            mouse: None,
+        };
+        let result = (|| {
+            session.mouse = Some(MouseLoggingSession::start(target, log_dir, startup)?);
+            session.keyboard = Some(KeyboardLoggingSession::start(target, log_dir, startup)?);
+            session.controller = Some(ControllerLoggingSession::start(target, log_dir, startup)?);
+            startup.check()
+        })();
+        if let Err(error) = result {
+            let message = format!("{}: {error}", startup.stage());
+            return Err(io::Error::new(
+                error.kind(),
+                match session.stop_inner() {
+                    Ok(()) => message,
+                    Err(cleanup) => format!("{message} | Input rollback failed: {cleanup}"),
+                },
+            ));
+        }
+        Ok(session)
     }
 
     pub fn stop(mut self) -> io::Result<()> {

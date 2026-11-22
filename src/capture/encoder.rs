@@ -24,6 +24,9 @@ pub(super) struct Mp4Encoder {
 
 impl Mp4Encoder {
     pub(super) fn create(path: &Path) -> io::Result<Self> {
+        // The sink writer may defer opening its URL until a sample is written.
+        // Surface an unusable destination during initialization as well.
+        std::fs::File::create(path)?;
         let wide_path = path_to_wide(path);
         // SAFETY: wide_path is NUL-terminated and remains alive for the call.
         // No byte stream or custom attributes are supplied.

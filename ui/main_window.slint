@@ -1,13 +1,15 @@
-import { VerticalBox, HorizontalBox, Button, ComboBox } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Button, ComboBox, ScrollView } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "Operation Logger";
-    width: 680px;
-    height: 360px;
+    min-height: 440px;
+    min-width: 680px;
 
     in-out property <[string]> app_items: [];
     in-out property <int> selected_index: -1;
     in-out property <bool> logging: false;
+    in-out property <bool> starting: false;
+    in-out property <bool> start_failed: false;
     in-out property <bool> has_log_dir: false;
     in-out property <string> selected_title: "-";
     in-out property <string> selected_process_name: "-";
@@ -34,13 +36,14 @@ export component MainWindow inherits Window {
             app_selector := ComboBox {
                 model: root.app_items;
                 current-index <=> root.selected_index;
-                enabled: !root.logging;
+                enabled: !root.logging && !root.starting;
                 selected => {
                     root.selection_changed(app_selector.current-index);
                 }
             }
             Button {
                 text: "Refresh";
+                enabled: !root.logging && !root.starting;
                 clicked => { root.refresh_clicked(); }
             }
         }
@@ -64,8 +67,8 @@ export component MainWindow inherits Window {
         HorizontalBox {
             spacing: 8px;
             Button {
-                text: "Start";
-                enabled: !root.logging && root.selected_index >= 0;
+                text: root.starting ? (root.start_failed ? "Cleaning up..." : "Starting...") : "Start";
+                enabled: !root.logging && !root.starting && root.selected_index >= 0;
                 clicked => { root.start_clicked(); }
             }
             Button {
@@ -82,15 +85,24 @@ export component MainWindow inherits Window {
 
         Rectangle {
             border-width: 1px;
-            border-color: #cccccc;
             border-radius: 4px;
-            height: 64px;
+            min-height: 120px;
+            vertical-stretch: 1;
+            background: root.start_failed ? #fff0f0 : #ffffff;
+            // Keep long OS/rollback errors readable without truncation.
+            border-color: root.start_failed ? #b00020 : #cccccc;
 
-            Text {
-                text: root.status_text;
-                wrap: word-wrap;
-                vertical-alignment: center;
-                horizontal-alignment: left;
+            ScrollView {
+                viewport-width: self.visible-width;
+                VerticalBox {
+                    padding: 10px;
+                    Text {
+                        text: root.status_text;
+                        color: root.start_failed ? #b00020 : #222222;
+                        font-weight: root.start_failed ? 700 : 400;
+                        wrap: word-wrap;
+                    }
+                }
             }
         }
     }

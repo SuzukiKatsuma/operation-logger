@@ -25,6 +25,7 @@ impl MouseCsvWriter {
         };
 
         writer.write_headers()?;
+        writer.flush()?;
         Ok(writer)
     }
 

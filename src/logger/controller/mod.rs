@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
 use crate::AppWindow;
+use crate::startup::Startup;
 
 mod csv_writer;
 mod device_registry;
@@ -25,13 +26,18 @@ pub(super) struct ControllerLoggingSession {
 }
 
 impl ControllerLoggingSession {
-    pub(super) fn start(selected: &AppWindow, log_dir: &Path) -> io::Result<Self> {
+    pub(super) fn start(
+        selected: &AppWindow,
+        log_dir: &Path,
+        startup: &Startup,
+    ) -> io::Result<Self> {
+        startup.enter("controller CSV initialization")?;
+        let mut writer = ControllerCsvWriter::new(log_dir)?;
+        startup.check()?;
         let (event_tx, event_rx) = mpsc::channel::<RawControllerReport>();
         let foreground = ForegroundResolver::new(selected);
-        let log_dir = PathBuf::from(log_dir);
 
         let worker = thread::spawn(move || {
-            let mut writer = ControllerCsvWriter::new(&log_dir)?;
             let mut registry = DeviceRegistry::new();
             let mut mapper = HidMapper::new();
             let mut states = HashMap::new();
@@ -62,7 +68,7 @@ impl ControllerLoggingSession {
             writer.flush()
         });
 
-        let raw_input = match RawInputSession::start(event_tx) {
+        let raw_input = match RawInputSession::start(event_tx, startup) {
             Ok(raw_input) => raw_input,
             Err(error) => {
                 let _ = worker.join();
@@ -81,17 +87,16 @@ impl ControllerLoggingSession {
     }
 
     fn stop_inner(&mut self) -> io::Result<()> {
-        if let Some(raw_input) = self.raw_input.take() {
-            raw_input.stop()?;
-        }
+        let stop_result = self.raw_input.take().map_or(Ok(()), |source| source.stop());
 
-        if let Some(worker) = self.worker.take() {
+        let worker_result = if let Some(worker) = self.worker.take() {
             worker
                 .join()
                 .map_err(|_| io::Error::other("controller logging worker panicked"))?
         } else {
             Ok(())
-        }
+        };
+        stop_result.and(worker_result)
     }
 }
 
