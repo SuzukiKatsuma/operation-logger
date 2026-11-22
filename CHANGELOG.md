@@ -1,3 +1,11 @@
+## 0.3.1 (2026-11-23)
+
+* Added asynchronous GUI startup with a Starting state and a shared 15-second deadline.
+* Added persistent red startup failure messages and one Windows warning sound per failed attempt.
+* Confirmed input CSV/header initialization and the first captured frame's encoder/metadata writes before entering the recording state.
+* Rolled back partially started sessions, including late successes after timeout, before allowing another start.
+* Added startup readiness, failure, timeout, rollback, and silent-success tests without changing log schemas or recording settings.
+
 ## 0.3.0 (2026-11-11)
 
 * Switched to monitor-based capture with cropping to the selected application window.
